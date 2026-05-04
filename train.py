@@ -24,25 +24,27 @@ from stable_baselines3.common.callbacks import (
 
 
 class RewardComponentCallback(BaseCallback):
-    """Logs reward components at each episode end, showing mean over recent episodes."""
+    """Logs per-step reward components averaged over recent episodes."""
 
     def __init__(self, window: int = 50, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._window = window
         self._dist_grip: list[float] = []
         self._dist_goal: list[float] = []
-        self._grasp_penalty: list[float] = []
+        self._grasp: list[float] = []
 
     def _on_step(self):
-        for info in self.locals["infos"]:
-            if "avg_dist_grip" in info:
-                self._dist_grip.append(info["avg_dist_grip"])
-                self._dist_goal.append(info["avg_dist_goal"])
-                self._grasp_penalty.append(info["avg_grasp_penalty"])
+        dones = self.locals.get("dones", [])
+        infos = self.locals.get("infos", [])
+        for done, info in zip(dones, infos):
+            if done:
+                self._dist_grip.append(info["reward_dist_grip"])
+                self._dist_goal.append(info["reward_dist_goal"])
+                self._grasp.append(info["reward_grasp"])
                 w = self._window
-                self.logger.record("reward/avg_dist_grip_m", np.mean(self._dist_grip[-w:]))
-                self.logger.record("reward/avg_dist_goal_m", np.mean(self._dist_goal[-w:]))
-                self.logger.record("reward/avg_grasp_penalty", np.mean(self._grasp_penalty[-w:]))
+                self.logger.record("reward/dist_grip", np.mean(self._dist_grip[-w:]))
+                self.logger.record("reward/dist_goal", np.mean(self._dist_goal[-w:]))
+                self.logger.record("reward/grasp",     np.mean(self._grasp[-w:]))
         return True
 
 

@@ -43,9 +43,9 @@ class ShapedRewardWrapper(gym.Wrapper):
         self._ep_steps += 1
 
         n = self._ep_steps
-        info["avg_dist_grip"] = self._ep_dist_grip / n      # meters
-        info["avg_dist_goal"] = self._ep_dist_goal / n      # meters
-        info["avg_grasp_penalty"] = self._ep_grasp_penalty / n  # ∈ [-1, 0]
+        info["reward_dist_grip"] = -self._ep_dist_grip / (n * MAX_DIST)  # ∈ [-1, 0]
+        info["reward_dist_goal"] = -self._ep_dist_goal / (n * MAX_DIST)  # ∈ [-1, 0]
+        info["reward_grasp"] = self._ep_grasp_penalty / n                # ∈ [-1, 0]
 
         return obs, reward, terminated, truncated, info
 
