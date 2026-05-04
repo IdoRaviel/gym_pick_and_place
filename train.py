@@ -28,9 +28,10 @@ class RewardComponentCallback(BaseCallback):
 
     def _on_step(self):
         for info in self.locals["infos"]:
-            if "ep_dense" in info:
-                self.logger.record("reward/ep_dense", info["ep_dense"])
-                self.logger.record("reward/ep_grasp_quality_mean", info["ep_grasp_quality_mean"])
+            if "avg_dist_grip" in info:
+                self.logger.record_mean("reward/avg_dist_grip_m", info["avg_dist_grip"])
+                self.logger.record_mean("reward/avg_dist_goal_m", info["avg_dist_goal"])
+                self.logger.record_mean("reward/avg_grasp_penalty", info["avg_grasp_penalty"])
         return True
 
 
