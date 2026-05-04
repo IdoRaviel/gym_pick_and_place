@@ -9,6 +9,7 @@ import gymnasium as gym
 import gymnasium_robotics
 import numpy as np
 from stable_baselines3 import HerReplayBuffer, DDPG, TD3, SAC
+from reward_wrapper import ShapedRewardWrapper
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.callbacks import (
     CallbackList,
@@ -103,7 +104,7 @@ for dir_path in [CONFIG["checkpoint_dir"], CONFIG["tensorboard_log_dir"]]:
 
 # environment setup
 gym.register_envs(gymnasium_robotics)
-env = gym.make(CONFIG["env_id"])
+env = ShapedRewardWrapper(gym.make(CONFIG["env_id"]))
 env.reset(seed=CONFIG["seed"])
 env.action_space.seed(
     CONFIG["seed"]
@@ -143,6 +144,7 @@ model = model_class(
     gamma=CONFIG["gamma"],
     tau=CONFIG["tau"],
     learning_rate=CONFIG["learning_rate"],
+    learning_starts=CONFIG.get("learning_starts", 100),
     replay_buffer_class=CONFIG.get("replay_buffer_class"),
     replay_buffer_kwargs=CONFIG.get("replay_buffer_kwargs"),
     verbose=CONFIG["verbose"],

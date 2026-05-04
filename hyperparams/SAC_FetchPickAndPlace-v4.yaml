@@ -1,5 +1,6 @@
 # environment settings
-total_timesteps: 2_000_000
+total_timesteps: 10_000_000
+learning_starts: 30_000
 
 # model hyperparameters
 policy: MultiInputPolicy
@@ -17,9 +18,3 @@ policy_kwargs:
 # callback frequencies
 eval_freq: 50_000
 checkpoint_freq: 200_000
-
-# HER parameters
-replay_buffer_class: HerReplayBuffer
-replay_buffer_kwargs:
-  n_sampled_goal: 4
-  goal_selection_strategy: future
