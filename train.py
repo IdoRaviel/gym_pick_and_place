@@ -24,14 +24,25 @@ from stable_baselines3.common.callbacks import (
 
 
 class RewardComponentCallback(BaseCallback):
-    """Logs reward components to TensorBoard at each episode end."""
+    """Logs reward components at each episode end, showing mean over recent episodes."""
+
+    def __init__(self, window: int = 50, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._window = window
+        self._dist_grip: list[float] = []
+        self._dist_goal: list[float] = []
+        self._grasp_penalty: list[float] = []
 
     def _on_step(self):
         for info in self.locals["infos"]:
             if "avg_dist_grip" in info:
-                self.logger.record_mean("reward/avg_dist_grip_m", info["avg_dist_grip"])
-                self.logger.record_mean("reward/avg_dist_goal_m", info["avg_dist_goal"])
-                self.logger.record_mean("reward/avg_grasp_penalty", info["avg_grasp_penalty"])
+                self._dist_grip.append(info["avg_dist_grip"])
+                self._dist_goal.append(info["avg_dist_goal"])
+                self._grasp_penalty.append(info["avg_grasp_penalty"])
+                w = self._window
+                self.logger.record("reward/avg_dist_grip_m", np.mean(self._dist_grip[-w:]))
+                self.logger.record("reward/avg_dist_goal_m", np.mean(self._dist_goal[-w:]))
+                self.logger.record("reward/avg_grasp_penalty", np.mean(self._grasp_penalty[-w:]))
         return True
 
 
@@ -147,7 +158,7 @@ eval_callback = EvalCallback(
     log_path=run_dir,
     eval_freq=CONFIG["eval_freq"],
 )
-callback = CallbackList([checkpoint_callback, eval_callback, RewardComponentCallback()])
+callback = CallbackList([checkpoint_callback, eval_callback, RewardComponentCallback(window=50)])
 
 model_class = {
     "DDPG": DDPG,
