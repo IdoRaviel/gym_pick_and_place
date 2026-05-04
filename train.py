@@ -1,7 +1,9 @@
 """Training script for robotic manipulation tasks using RL algorithms (current: SAC)."""
 
 import os
+import re
 import argparse
+from pathlib import Path
 from datetime import datetime
 import yaml
 
@@ -18,7 +20,6 @@ from stable_baselines3.common.callbacks import (
 )
 
 
-# load configuration from YAML file
 def load_config():
     yaml_filename = f"{CONFIG['model_class']}_{CONFIG['env_id']}.yaml"
     config_path = os.path.join("hyperparams", yaml_filename)
@@ -31,13 +32,11 @@ def load_config():
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    # convert replay_buffer_class from string to actual class
     if "replay_buffer_class" in config:
         config["replay_buffer_class"] = HerReplayBuffer
     return config
 
 
-# argument parser for flexibility
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Train RL agent for FetchPush environment."
@@ -66,6 +65,12 @@ def parse_args():
         choices=[0, 1, 2],
         help="Verbosity level (0: no output, 1: info, 2: debug)",
     )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to checkpoint zip to resume from (e.g. logs/.../checkpoints/rl_model_200000_steps.zip)",
+    )
     return parser.parse_args()
 
 
@@ -79,18 +84,25 @@ CONFIG = {
     "verbose": args.verbose,
 }
 
-# update CONFIG with the loaded config
 CONFIG.update(load_config())
 
-# organizing logs
 env_name = CONFIG["env_id"]
-timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-
-# create base directories
 base_dir = os.path.join(CONFIG["log_dir"], env_name)
-run_dir = os.path.join(base_dir, f"{CONFIG['model_class']}_{timestamp}")
 
-# set up directory structure
+if args.resume:
+    # reuse existing run dir so logs are continuous
+    # checkpoint path: logs/<env>/<run>/checkpoints/rl_model_<step>_steps.zip
+    run_dir = str(Path(args.resume).parent.parent)
+    match = re.search(r"rl_model_(\d+)_steps", args.resume)
+    completed_steps = int(match.group(1)) if match else 0
+    remaining_steps = CONFIG["total_timesteps"] - completed_steps
+    print(f"Resuming from step {completed_steps:,}, {remaining_steps:,} steps remaining.")
+else:
+    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+    run_dir = os.path.join(base_dir, f"{CONFIG['model_class']}_{timestamp}")
+    completed_steps = 0
+    remaining_steps = CONFIG["total_timesteps"]
+
 CONFIG.update(
     {
         "checkpoint_dir": os.path.join(run_dir, "checkpoints"),
@@ -98,77 +110,89 @@ CONFIG.update(
     }
 )
 
-# setup logging directories
 for dir_path in [CONFIG["checkpoint_dir"], CONFIG["tensorboard_log_dir"]]:
     os.makedirs(dir_path, exist_ok=True)
 
 # environment setup
 gym.register_envs(gymnasium_robotics)
 env = ShapedRewardWrapper(gym.make(CONFIG["env_id"]))
+eval_env = ShapedRewardWrapper(gym.make(CONFIG["env_id"]))
 env.reset(seed=CONFIG["seed"])
-env.action_space.seed(
-    CONFIG["seed"]
-)  # Seed action space for more deterministic behavior
+env.action_space.seed(CONFIG["seed"])
 
-# callbacks
+# save replay buffer alongside each checkpoint so resume is fast
 checkpoint_callback = CheckpointCallback(
-    save_freq=CONFIG["checkpoint_freq"], save_path=CONFIG["checkpoint_dir"]
+    save_freq=CONFIG["checkpoint_freq"],
+    save_path=CONFIG["checkpoint_dir"],
+    save_replay_buffer=True,
 )
 eval_callback = EvalCallback(
-    env,
+    eval_env,
     best_model_save_path=run_dir,
     log_path=run_dir,
     eval_freq=CONFIG["eval_freq"],
 )
 callback = CallbackList([checkpoint_callback, eval_callback])
 
-# model setup
 model_class = {
     "DDPG": DDPG,
     "TD3": TD3,
     "SAC": SAC,
 }[CONFIG["model_class"]]
 
-# action noise
 n_actions = env.action_space.shape[-1]
 action_noise = NormalActionNoise(
     mean=np.zeros(n_actions), sigma=CONFIG["action_noise_sigma"] * np.ones(n_actions)
 )
 
-# model initialization
-model = model_class(
-    policy=CONFIG["policy"],
-    env=env,
-    buffer_size=CONFIG["buffer_size"],
-    batch_size=CONFIG["batch_size"],
-    gamma=CONFIG["gamma"],
-    tau=CONFIG["tau"],
-    learning_rate=CONFIG["learning_rate"],
-    learning_starts=CONFIG.get("learning_starts", 100),
-    replay_buffer_class=CONFIG.get("replay_buffer_class"),
-    replay_buffer_kwargs=CONFIG.get("replay_buffer_kwargs"),
-    verbose=CONFIG["verbose"],
-    action_noise=action_noise,
-    tensorboard_log=CONFIG["tensorboard_log_dir"],
-    policy_kwargs=CONFIG["policy_kwargs"],
-    seed=CONFIG["seed"],
-)
+if args.resume:
+    model = model_class.load(
+        args.resume,
+        env=env,
+        verbose=CONFIG["verbose"],
+        tensorboard_log=CONFIG["tensorboard_log_dir"],
+    )
+    model.action_noise = action_noise
+    buffer_path = args.resume.replace(".zip", "_replay_buffer.pkl")
+    if os.path.exists(buffer_path):
+        model.load_replay_buffer(buffer_path)
+        print(f"Replay buffer loaded: {model.replay_buffer.size():,} transitions")
+    else:
+        print("No replay buffer found — starting with empty buffer.")
+else:
+    model = model_class(
+        policy=CONFIG["policy"],
+        env=env,
+        buffer_size=CONFIG["buffer_size"],
+        batch_size=CONFIG["batch_size"],
+        gamma=CONFIG["gamma"],
+        tau=CONFIG["tau"],
+        learning_rate=CONFIG["learning_rate"],
+        learning_starts=CONFIG.get("learning_starts", 100),
+        replay_buffer_class=CONFIG.get("replay_buffer_class"),
+        replay_buffer_kwargs=CONFIG.get("replay_buffer_kwargs"),
+        verbose=CONFIG["verbose"],
+        action_noise=action_noise,
+        tensorboard_log=CONFIG["tensorboard_log_dir"],
+        policy_kwargs=CONFIG["policy_kwargs"],
+        seed=CONFIG["seed"],
+    )
 
-# training loop
 try:
-    model.learn(total_timesteps=CONFIG["total_timesteps"], callback=callback)
+    model.learn(
+        total_timesteps=remaining_steps,
+        callback=callback,
+        reset_num_timesteps=not bool(args.resume),
+    )
     print("\nTraining completed. Saving model...")
 
 except KeyboardInterrupt:
     print("\nTraining interrupted by user. Saving model...")
 
 finally:
-    # saving model and replay buffer
-    model_name = f"{env_name}"
-    model_path = os.path.join(run_dir, model_name)
+    model_path = os.path.join(run_dir, env_name)
     model.save(model_path)
     model.save_replay_buffer(f"{model_path}_buffer")
     print(f"Model and replay buffer saved to: {run_dir}")
-
-    # cleanup
     env.close()
+    eval_env.close()

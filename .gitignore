@@ -178,3 +178,4 @@ cython_debug/
 # Project-specific
 logs/
 CLAUDE.md
+*.sh
