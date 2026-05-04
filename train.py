@@ -11,6 +11,7 @@ import gymnasium as gym
 import gymnasium_robotics
 import numpy as np
 from stable_baselines3 import HerReplayBuffer, DDPG, TD3, SAC
+from stable_baselines3.common.buffers import DictReplayBuffer
 from reward_wrapper import ShapedRewardWrapper
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.callbacks import (
@@ -169,7 +170,7 @@ else:
         tau=CONFIG["tau"],
         learning_rate=CONFIG["learning_rate"],
         learning_starts=CONFIG.get("learning_starts", 100),
-        replay_buffer_class=CONFIG.get("replay_buffer_class"),
+        replay_buffer_class=CONFIG.get("replay_buffer_class", DictReplayBuffer),
         replay_buffer_kwargs=CONFIG.get("replay_buffer_kwargs"),
         verbose=CONFIG["verbose"],
         action_noise=action_noise,
