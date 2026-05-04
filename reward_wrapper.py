@@ -26,23 +26,26 @@ class ShapedRewardWrapper(gym.Wrapper):
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
         self._geom_names = self._build_geom_name_map()
-        self._ep_dense = 0.0
-        self._ep_grasp_quality = 0.0
+        self._ep_dist_grip = 0.0
+        self._ep_dist_goal = 0.0
+        self._ep_grasp_penalty = 0.0
         self._ep_steps = 0
         return obs, info
 
     def step(self, action):
         obs, _, terminated, truncated, info = self.env.step(action)
-        dense, grasp_quality = self._reward_components(obs)
-        reward = dense - (1.0 - grasp_quality)
+        dist_grip, dist_goal, grasp_quality = self._reward_components(obs)
+        reward = -(dist_grip + dist_goal) / MAX_DIST - (1.0 - grasp_quality)
 
-        self._ep_dense += dense
-        self._ep_grasp_quality += grasp_quality
+        self._ep_dist_grip += dist_grip
+        self._ep_dist_goal += dist_goal
+        self._ep_grasp_penalty += -(1.0 - grasp_quality)
         self._ep_steps += 1
 
-        if terminated or truncated:
-            info["ep_dense"] = self._ep_dense
-            info["ep_grasp_quality_mean"] = self._ep_grasp_quality / max(self._ep_steps, 1)
+        n = self._ep_steps
+        info["avg_dist_grip"] = self._ep_dist_grip / n      # meters
+        info["avg_dist_goal"] = self._ep_dist_goal / n      # meters
+        info["avg_grasp_penalty"] = self._ep_grasp_penalty / n  # ∈ [-1, 0]
 
         return obs, reward, terminated, truncated, info
 
@@ -88,12 +91,8 @@ class ShapedRewardWrapper(gym.Wrapper):
         # [6:9]  object position relative to gripper
         object_rel_pos = o[6:9]
 
-        dist_grip_obj = np.linalg.norm(object_rel_pos)
-        dist_obj_goal = np.linalg.norm(achieved - desired)
-
-        # normalize both distances to [0, 1] using max workspace distance
-        dense = -(dist_grip_obj + dist_obj_goal) / MAX_DIST  # ∈ [-2, 0] normalised
-
+        dist_grip = np.linalg.norm(object_rel_pos)   # meters
+        dist_goal = np.linalg.norm(achieved - desired)  # meters
         grasp_quality = self._grasp_quality()
 
-        return dense, grasp_quality
+        return dist_grip, dist_goal, grasp_quality
