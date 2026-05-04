@@ -23,8 +23,11 @@ def get_latest_model_path(log_dir, env_name):
         raise FileNotFoundError(f"No {algo} folders found in {log_dir}")
 
     latest_algo_folder = max(algo_folders)
-    model_path = os.path.join(log_dir, latest_algo_folder, env_name)
-    return model_path
+    run_dir = os.path.join(log_dir, latest_algo_folder)
+    # prefer final model, fall back to best_model saved by EvalCallback
+    final = os.path.join(run_dir, env_name)
+    best = os.path.join(run_dir, "best_model")
+    return final if os.path.exists(final + ".zip") else best
 
 
 # setup environment with video recording
