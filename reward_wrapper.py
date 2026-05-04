@@ -24,11 +24,27 @@ class ShapedRewardWrapper(gym.Wrapper):
         self._initial_obj_z = obs["observation"][5]
         # build geom-id → geom-name map once per episode (model doesn't change)
         self._geom_names = self._build_geom_name_map()
+        self._ep_dense = 0.0
+        self._ep_grasp_bonus = 0.0
+        self._ep_lift = 0.0
         return obs, info
 
     def step(self, action):
         obs, _, terminated, truncated, info = self.env.step(action)
-        reward = self._shaped_reward(obs)
+        dense, grasp_bonus, lift_reward = self._reward_components(obs)
+        reward = dense + grasp_bonus + lift_reward
+
+        self._ep_dense += dense
+        self._ep_grasp_bonus += grasp_bonus
+        self._ep_lift += lift_reward
+
+        # write episode totals to info so callbacks can log them to TensorBoard
+        if terminated or truncated:
+            info["ep_dense"] = self._ep_dense
+            info["ep_grasp_bonus"] = self._ep_grasp_bonus
+            info["ep_lift"] = self._ep_lift
+            info["grasp_triggered"] = float(self._grasp_bonus_given)
+
         return obs, reward, terminated, truncated, info
 
     # ------------------------------------------------------------------
@@ -49,7 +65,7 @@ class ShapedRewardWrapper(gym.Wrapper):
         return False
 
     # ------------------------------------------------------------------
-    def _shaped_reward(self, obs):
+    def _reward_components(self, obs):
         o = obs["observation"]
         achieved = obs["achieved_goal"]  # object (x,y,z)
         desired = obs["desired_goal"]    # target (x,y,z)
@@ -78,4 +94,4 @@ class ShapedRewardWrapper(gym.Wrapper):
         lifted = object_pos[2] > self._initial_obj_z + self.LIFT_HEIGHT_THRESHOLD
         lift_reward = self.LIFT_REWARD_PER_STEP if (grasping and lifted) else 0.0
 
-        return dense + grasp_bonus + lift_reward
+        return dense, grasp_bonus, lift_reward

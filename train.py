@@ -13,12 +13,27 @@ import numpy as np
 from stable_baselines3 import HerReplayBuffer, DDPG, TD3, SAC
 from stable_baselines3.common.buffers import DictReplayBuffer
 from reward_wrapper import ShapedRewardWrapper
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.callbacks import (
+    BaseCallback,
     CallbackList,
     CheckpointCallback,
     EvalCallback,
 )
+
+
+class RewardComponentCallback(BaseCallback):
+    """Logs individual reward components to TensorBoard at each episode end."""
+
+    def _on_step(self):
+        for info in self.locals["infos"]:
+            if "ep_dense" in info:
+                self.logger.record("reward/ep_dense", info["ep_dense"])
+                self.logger.record("reward/ep_grasp_bonus", info["ep_grasp_bonus"])
+                self.logger.record("reward/ep_lift", info["ep_lift"])
+                self.logger.record("reward/grasp_triggered", info["grasp_triggered"])
+        return True
 
 
 def load_config():
@@ -117,7 +132,7 @@ for dir_path in [CONFIG["checkpoint_dir"], CONFIG["tensorboard_log_dir"]]:
 # environment setup
 gym.register_envs(gymnasium_robotics)
 env = ShapedRewardWrapper(gym.make(CONFIG["env_id"]))
-eval_env = ShapedRewardWrapper(gym.make(CONFIG["env_id"]))
+eval_env = Monitor(ShapedRewardWrapper(gym.make(CONFIG["env_id"])))
 env.reset(seed=CONFIG["seed"])
 env.action_space.seed(CONFIG["seed"])
 
@@ -133,7 +148,7 @@ eval_callback = EvalCallback(
     log_path=run_dir,
     eval_freq=CONFIG["eval_freq"],
 )
-callback = CallbackList([checkpoint_callback, eval_callback])
+callback = CallbackList([checkpoint_callback, eval_callback, RewardComponentCallback()])
 
 model_class = {
     "DDPG": DDPG,
