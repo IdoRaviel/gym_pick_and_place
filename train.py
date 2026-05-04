@@ -24,15 +24,13 @@ from stable_baselines3.common.callbacks import (
 
 
 class RewardComponentCallback(BaseCallback):
-    """Logs individual reward components to TensorBoard at each episode end."""
+    """Logs reward components to TensorBoard at each episode end."""
 
     def _on_step(self):
         for info in self.locals["infos"]:
             if "ep_dense" in info:
                 self.logger.record("reward/ep_dense", info["ep_dense"])
-                self.logger.record("reward/ep_grasp_bonus", info["ep_grasp_bonus"])
-                self.logger.record("reward/ep_lift", info["ep_lift"])
-                self.logger.record("reward/grasp_triggered", info["grasp_triggered"])
+                self.logger.record("reward/ep_grasp_quality_mean", info["ep_grasp_quality_mean"])
         return True
 
 
