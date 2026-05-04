@@ -6,6 +6,7 @@ import time
 
 import gymnasium as gym
 import gymnasium_robotics
+from gymnasium.wrappers import RecordVideo
 import numpy as np
 from stable_baselines3 import DDPG, TD3, SAC
 
@@ -41,6 +42,7 @@ def parse_args():
     )
     parser.add_argument("--seed", type=int, default=CONFIG["seed"], help="Random seed")
     parser.add_argument("--no-render", action="store_true", help="Disable rendering")
+    parser.add_argument("--record", action="store_true", help="Record video to ./videos/ instead of live render")
     return parser.parse_args()
 
 
@@ -53,6 +55,7 @@ CONFIG.update(
         "seed": args.seed,
         "n_eval_episodes": args.episodes,
         "render": not args.no_render,
+        "record": args.record,
     }
 )
 
@@ -81,7 +84,15 @@ model_path = get_latest_model_path(CONFIG["log_dir"], env_name)
 
 # environment setup
 gym.register_envs(gymnasium_robotics)
-env = gym.make(CONFIG["env_id"], render_mode="human" if CONFIG["render"] else None)
+if CONFIG["record"]:
+    render_mode = "rgb_array"
+elif CONFIG["render"]:
+    render_mode = "human"
+else:
+    render_mode = None
+env = gym.make(CONFIG["env_id"], render_mode=render_mode)
+if CONFIG["record"]:
+    env = RecordVideo(env, video_folder="./videos", episode_trigger=lambda _: True)
 env.reset(seed=CONFIG["seed"])
 
 # load model
