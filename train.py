@@ -31,7 +31,6 @@ class RewardComponentCallback(BaseCallback):
         self._window = window
         self._dist_grip: list[float] = []
         self._dist_goal: list[float] = []
-        self._grasp: list[float] = []
 
     def _on_step(self):
         dones = self.locals.get("dones", [])
@@ -40,11 +39,9 @@ class RewardComponentCallback(BaseCallback):
             if done:
                 self._dist_grip.append(info["reward_dist_grip"])
                 self._dist_goal.append(info["reward_dist_goal"])
-                self._grasp.append(info["reward_grasp"])
                 w = self._window
                 self.logger.record("reward/dist_grip", np.mean(self._dist_grip[-w:]))
                 self.logger.record("reward/dist_goal", np.mean(self._dist_goal[-w:]))
-                self.logger.record("reward/grasp",     np.mean(self._grasp[-w:]))
         return True
 
 
@@ -119,8 +116,10 @@ base_dir = os.path.join(CONFIG["log_dir"], env_name)
 
 if args.resume:
     # reuse existing run dir so logs are continuous
-    # checkpoint path: logs/<env>/<run>/checkpoints/rl_model_<step>_steps.zip
-    run_dir = str(Path(args.resume).parent.parent)
+    # model can be a checkpoint (logs/<run>/checkpoints/rl_model_N_steps.zip)
+    # or the final/best model (logs/<run>/best_model.zip or logs/<run>/<env>.zip)
+    p = Path(args.resume)
+    run_dir = str(p.parent.parent if p.parent.name == "checkpoints" else p.parent)
     match = re.search(r"rl_model_(\d+)_steps", args.resume)
     completed_steps = int(match.group(1)) if match else 0
     remaining_steps = CONFIG["total_timesteps"] - completed_steps
