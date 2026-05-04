@@ -6,7 +6,7 @@ learning_starts: 30_000
 policy: MultiInputPolicy
 buffer_size: 1_000_000
 batch_size: 1024
-gamma: 0.95
+gamma: 0.97
 tau: 0.05
 learning_rate: 0.0005
 action_noise_sigma: 0.1
