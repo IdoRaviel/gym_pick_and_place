@@ -2,6 +2,7 @@
 
 import os
 import argparse
+import time
 
 import gymnasium as gym
 import gymnasium_robotics
@@ -108,6 +109,7 @@ try:
             obs, reward, terminated, truncated, info = env.step(action)
             episode_reward += reward
             done = terminated or truncated
+            time.sleep(1 / 25)
 
         rewards.append(episode_reward)
         successes.append(info.get("is_success", 0))
